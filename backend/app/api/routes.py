@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 from app.config import Settings, get_settings
 from app.keyboard.ngram_typer import generate_keystroke_timeline
 from app.mouse.ghost_cursor import path_response
-from app.vision import mock as vision_mock
 from app.vision.openrouter_vision import get_engine
 
 router = APIRouter(prefix="/v1")
@@ -49,14 +48,12 @@ class KeyboardRequest(BaseModel):
 @router.get("/health")
 def health(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     engine = get_engine()
-    # Clear stale "missing key" after user edits .env + restart; also allow soft re-check
     if not engine.ready:
         engine.error = None
         engine.ensure_client()
     return {
         "ok": True,
-        "mock_vision": settings.mock_vision,
-        "vision_provider": "mock" if settings.mock_vision else "openrouter",
+        "vision_provider": "openrouter",
         "vision_model": settings.openrouter_model,
         "vision_ready": engine.ready,
         "vision_error": engine.error,
@@ -90,11 +87,8 @@ async def _read_image(file: UploadFile) -> Image.Image:
 async def vision_locate(
     task: str = Form(...),
     image: UploadFile = File(...),
-    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     img = await _read_image(image)
-    if settings.mock_vision:
-        return vision_mock.mock_locate(task, img.size)
     try:
         return get_engine().locate(img, task)
     except Exception as exc:  # noqa: BLE001
@@ -105,11 +99,8 @@ async def vision_locate(
 async def vision_validate(
     expected_after: str = Form(...),
     image: UploadFile = File(...),
-    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     img = await _read_image(image)
-    if settings.mock_vision:
-        return vision_mock.mock_validate(expected_after)
     try:
         return get_engine().validate(img, expected_after)
     except Exception as exc:  # noqa: BLE001

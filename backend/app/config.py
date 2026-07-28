@@ -7,10 +7,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     api_key: str = "dev-local-key"
-    mock_vision: bool = True
 
     # OpenRouter (Qwen2.5 VL 72B Instruct via OpenAI-compatible API)
-    # repeatitively needed for main.py, routes.py and openrouter_vision.py
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_model: str = "qwen/qwen2.5-vl-72b-instruct"

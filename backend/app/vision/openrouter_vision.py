@@ -151,7 +151,6 @@ class OpenRouterVisionEngine:
                 "targets": targets,
                 "signals": list(data.get("signals") or []),
                 "raw": raw[-400:],
-                "mock": False,
                 "provider": "openrouter",
             }
 
@@ -187,7 +186,6 @@ If the element is missing, status=not_found (still include a best-effort x,y if 
             "y": y,
             "confidence": confidence,
             "raw": raw[-400:],
-            "mock": False,
             "provider": "openrouter",
         }
 
@@ -222,7 +220,6 @@ If the element is missing, status=not_found (still include a best-effort x,y if 
             "signals": list(data.get("signals") or []),
             "targets": targets,
             "raw_summary": str(data.get("raw_summary") or raw[-200:]),
-            "mock": False,
             "provider": "openrouter",
         }
 
