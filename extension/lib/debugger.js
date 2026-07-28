@@ -66,19 +66,18 @@ export async function playMousePath(tabId, points) {
 export async function playKeyTimeline(tabId, events) {
   for (const ev of events || []) {
     if (ev.delay_ms) await sleep(ev.delay_ms);
+    const isKeyUp = ev.op === "keyUp";
     const params = {
-      type: ev.op === "keyUp" ? "keyUp" : "keyDown",
+      type: isKeyUp ? "keyUp" : "keyDown",
       key: ev.key,
       code: ev.code,
       windowsVirtualKeyCode: 0,
       nativeVirtualKeyCode: 0,
     };
-    if (ev.text && ev.op === "keyDown") {
-      params.text = ev.text;
-      params.unmodifiedText = ev.text;
-    }
-    await dispatch(tabId, "Input.dispatchKeyEvent", params);
-    if (ev.op === "keyDown" && ev.text && ev.key !== "Shift") {
+    // Printable chars: keyDown (no text) → char → keyUp.
+    // Do NOT also set text on keyDown — LinkedIn contenteditable inserts twice (Hhii…).
+    if (!isKeyUp && ev.text && ev.key !== "Shift") {
+      await dispatch(tabId, "Input.dispatchKeyEvent", params);
       await dispatch(tabId, "Input.dispatchKeyEvent", {
         type: "char",
         text: ev.text,
@@ -86,6 +85,8 @@ export async function playKeyTimeline(tabId, events) {
         key: ev.key,
         code: ev.code,
       });
+    } else {
+      await dispatch(tabId, "Input.dispatchKeyEvent", params);
     }
   }
 }
