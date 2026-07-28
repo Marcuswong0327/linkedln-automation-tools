@@ -38,8 +38,9 @@ TASK_GOALS: dict[str, str] = {
         "you are NOT connected to). Not Messaging in the top nav, not More (...)."
     ),
     "message_box": (
-        "the message composer text input/contenteditable area where you type a LinkedIn DM "
-        "(placeholder like 'Write a message…' inside the messaging overlay/bubble)"
+        "the message composer text input where you type a LinkedIn DM. "
+        "Either: (A) 'New message' modal — large textarea with placeholder 'Write a message...', "
+        "or (B) existing chat thread — contenteditable/textarea at bottom with 'Write a message...'"
     ),
     "send": (
         "the Send control in the open LinkedIn messaging composer "
@@ -104,16 +105,19 @@ Coordinates are pixel centers in THIS image (origin top-left). Image size is {wi
 MESSAGE_VALIDATE_PROMPT = """You are classifying a LinkedIn UI screenshot during Message (DM) automation.
 Return ONLY valid JSON (no markdown):
 {{
-  "state": "composer_open" | "message_sent" | "captcha" | "unusual_activity" | "unknown",
+  "state": "composer_open" | "new_message_modal" | "thread_composer" | "message_sent" | "captcha" | "unusual_activity" | "unknown",
   "signals": ["visible text clues"],
   "targets": [{{"label": "message_box" | "Send", "x": <int>, "y": <int>, "confidence": <0-1>}}],
   "raw_summary": "one short sentence"
 }}
 
+Two composer layouts after clicking profile Message:
+1) new_message_modal — centered dialog titled "New message", To: chip, "Write a message..." textarea, Send at bottom-right.
+2) thread_composer — right-side or overlay chat thread with prior messages + "Write a message..." at bottom.
+
 Rules:
-- composer_open: messaging overlay/bubble is open with a Write a message / text input visible.
-  Include message_box center in targets when possible; include Send if visible.
-- message_sent: your typed message appears in the thread / composer cleared after send.
+- new_message_modal / thread_composer / composer_open: text input visible — include message_box center in targets; include Send if visible.
+- message_sent: typed message visible in thread or modal closed with message delivered.
 - captcha / unusual_activity: bot checks.
 Coordinates are pixel centers in THIS image (origin top-left). Image size is {width}x{height}.
 """
