@@ -1,4 +1,4 @@
-import { startConnectJob, pauseJob, abortJob } from "../lib/connect_job.js";
+import { startConnectJob, startMessageJob, pauseJob, abortJob } from "../lib/connect_job.js";
 import {
   getJob,
   countTodayConnects,
@@ -14,12 +14,14 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     if (msg?.type === "start_job") {
-      startConnectJob(msg.urls || []).catch((err) => {
+      const mode = msg.mode === "message" ? "message" : "connect";
+      const runner = mode === "message" ? startMessageJob : startConnectJob;
+      runner(msg.urls || []).catch((err) => {
         chrome.runtime
           .sendMessage({ type: "job_status", status: { phase: "error", error: String(err) } })
           .catch(() => {});
       });
-      sendResponse({ ok: true });
+      sendResponse({ ok: true, mode });
       return;
     }
     if (msg?.type === "pause_job") {

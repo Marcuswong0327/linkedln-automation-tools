@@ -15,6 +15,7 @@ import {
 } from "./debugger.js";
 import {
   assertCanConnect,
+  assertCanMessage,
   appendSendEvent,
   gaussianDelayMs,
   saveJob,
@@ -40,6 +41,152 @@ async function getViewport(tabId) {
     }),
   });
   return results?.[0]?.result || { width: 1280, height: 800, dpr: 1 };
+}
+
+/** DOM probe for action-bar state — uses Pending label + Message button fill color. */
+async function detectDomProfileState(tabId) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const isBlueFill = (el) => {
+        if (!el) return false;
+        if (el.classList?.contains("artdeco-button--primary")) return true;
+        const bg = getComputedStyle(el).backgroundColor || "";
+        const m = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (!m) return false;
+        const r = Number(m[1]);
+        const g = Number(m[2]);
+        const b = Number(m[3]);
+        // LinkedIn primary blue (~10,102,194) — not white/transparent
+        return b > 140 && r < 90 && g < 160 && b > r + 40;
+      };
+
+      const candidates = [];
+      const nodes = document.querySelectorAll(
+        "button, a, [role='button'], .artdeco-button, .pvs-profile-actions button, .pvs-profile-actions a"
+      );
+      for (const el of nodes) {
+        const label = `${el.getAttribute("aria-label") || ""} ${el.innerText || ""}`
+          .replace(/\s+/g, " ")
+          .trim();
+        if (!label || label.length > 120) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8 || r.top < 56 || r.top > 520) continue;
+        candidates.push({
+          label,
+          lower: label.toLowerCase(),
+          blue: isBlueFill(el),
+          primary: !!el.classList?.contains("artdeco-button--primary"),
+        });
+      }
+
+      const signals = candidates.slice(0, 14).map((c) => {
+        if (/^message\b/i.test(c.label)) {
+          return c.blue || c.primary ? "Message filled_blue" : "Message outlined_white";
+        }
+        return c.label;
+      });
+
+      const hasPending = candidates.some((c) => /\bpending\b/.test(c.lower));
+      const connect = candidates.find((c) => /\bconnect\b/.test(c.lower) && !/\bpending\b/.test(c.lower));
+      const message = candidates.find((c) => /^message\b/i.test(c.label) || /^message$/i.test(c.lower));
+      const messageBlue = !!(message && (message.blue || message.primary));
+      const messageStyle = !message
+        ? "absent"
+        : messageBlue
+          ? "filled_blue"
+          : "outlined_white";
+
+      // Pending invite: Pending + often blue Message — wait only
+      if (hasPending) {
+        return { state: "pending", message_style: messageStyle, signals };
+      }
+      // Connected: filled blue Message, no Connect
+      if (messageBlue && !connect) {
+        return { state: "can_message", message_style: "filled_blue", signals };
+      }
+      // Not connected: Connect present (Message usually white/outlined)
+      if (connect) {
+        return {
+          state: "can_connect",
+          message_style: messageStyle,
+          signals,
+        };
+      }
+      if (message && !messageBlue) {
+        return { state: "not_connected_message_only", message_style: "outlined_white", signals };
+      }
+      return { state: "unknown", message_style: messageStyle, signals };
+    },
+  });
+  return results?.[0]?.result || { state: "unknown", message_style: "unknown", signals: [] };
+}
+
+/** CSS pixel center of the FILLED (primary/blue) profile-bar Message button only. */
+async function locateDomMessageButton(tabId) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const isBlueFill = (el) => {
+        if (el.classList?.contains("artdeco-button--primary")) return true;
+        const bg = getComputedStyle(el).backgroundColor || "";
+        const m = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (!m) return false;
+        const r = Number(m[1]);
+        const g = Number(m[2]);
+        const b = Number(m[3]);
+        return b > 140 && r < 90 && g < 160 && b > r + 40;
+      };
+
+      const nodes = [
+        ...document.querySelectorAll(
+          "button, a, [role='button'], .artdeco-button, .pvs-profile-actions button, .pvs-profile-actions a"
+        ),
+      ];
+      for (const el of nodes) {
+        const label = `${el.getAttribute("aria-label") || ""} ${el.innerText || ""}`
+          .replace(/\s+/g, " ")
+          .trim();
+        if (!/^message$/i.test(label) && !/^message\b/i.test(label)) continue;
+        if (/messaging|unread/i.test(label) && !/^message$/i.test(label.trim())) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8) continue;
+        if (r.top < 56) continue;
+        // Only filled blue Message = connected / pending messaging CTA
+        if (!isBlueFill(el)) continue;
+        return {
+          x: Math.round(r.left + r.width / 2),
+          y: Math.round(r.top + r.height / 2),
+          label: "Message",
+          confidence: 0.95,
+          message_style: "filled_blue",
+        };
+      }
+      return null;
+    },
+  });
+  return results?.[0]?.result || null;
+}
+
+function triageLooksPending(triage) {
+  const state = (triage?.profile_state || "").toLowerCase();
+  if (state === "pending") return "pending";
+  if (state === "already_connected") return "already_connected";
+  const signals = (triage?.signals || []).join(" ").toLowerCase();
+  if (/\bpending\b/.test(signals)) return "pending";
+  return null;
+}
+
+/** True only for connected 1st-degree: filled blue Message, not Pending, not Connect. */
+function triageCanMessage(triage) {
+  const state = (triage?.profile_state || "").toLowerCase();
+  const style = (triage?.message_style || "").toLowerCase();
+  if (state === "pending") return false;
+  if (style === "outlined_white") return false;
+  if (state === "can_connect_direct" || state === "can_connect_overflow") return false;
+  if (state === "can_message" || state === "already_connected") return true;
+  if (style === "filled_blue") return true;
+  return false;
 }
 
 function toCssCoords(point, viewport, screenshotNatural) {
@@ -209,6 +356,22 @@ async function processProfile(tabId, windowId, url, settings, job) {
   await scrollChunk(tabId, 250 + Math.random() * 150);
   await sleep(1200 + Math.random() * 1500);
 
+  // Prefer DOM for Pending / already connected (skip before paying for vision)
+  const domState = await detectDomProfileState(tabId);
+  broadcast({
+    phase: "dom_cta",
+    state: domState.state,
+    message_style: domState.message_style,
+    signals: domState.signals,
+    url,
+  });
+  if (domState.state === "pending") {
+    return { outcome: "pending", detail: "dom" };
+  }
+  if (domState.state === "already_connected" || domState.state === "can_message") {
+    return { outcome: "already_connected", detail: `dom:${domState.message_style || ""}` };
+  }
+
   let dataUrl = await captureTab(windowId, tabId);
   let shotSize = await screenshotSize(dataUrl);
 
@@ -218,12 +381,17 @@ async function processProfile(tabId, windowId, url, settings, job) {
   broadcast({
     phase: "triage_result",
     profile_state: triage.profile_state,
+    message_style: triage.message_style,
     signals: triage.signals,
     url,
   });
 
-  if (triage.profile_state === "pending" || triage.profile_state === "already_connected") {
-    return { outcome: triage.profile_state };
+  const skipState = triageLooksPending(triage);
+  if (skipState) {
+    return { outcome: skipState, detail: "vision_triage" };
+  }
+  if (triageCanMessage(triage) || (triage.profile_state || "").toLowerCase() === "can_message") {
+    return { outcome: "already_connected", detail: "vision_triage" };
   }
 
   let usedOverflow = isOverflowState(triage);
@@ -444,6 +612,315 @@ export async function startConnectJob(urls) {
         const gap = settings.fastDogfood
           ? gaussianDelayMs(8_000, 3_000, 4_000, 20_000)
           : gaussianDelayMs(90_000, 40_000, 45_000, 8 * 60_000);
+        broadcast({ phase: "waiting", ms: Math.round(gap) });
+        await sleep(gap);
+        job = await getJob();
+        if (!job || job.status !== "running") break;
+      }
+    }
+
+    job = await getJob();
+    if (job && job.status === "running") {
+      job.status = "completed";
+      await saveJob(job);
+      broadcast({ phase: "completed", results: job.results });
+    }
+  } finally {
+    await detachDebugger(tabId);
+  }
+}
+
+async function fallbackToConnect(tabId, windowId, url, settings, job, reason) {
+  broadcast({ phase: "fallback_connect", reason, url });
+  try {
+    await assertCanConnect(settings);
+  } catch (e) {
+    return {
+      outcome: "not_connected",
+      detail: `connect_blocked:${e.message || e}`,
+    };
+  }
+  const result = await processProfile(tabId, windowId, url, settings, job);
+  return {
+    outcome: result.outcome,
+    detail: result.detail ? `via_connect:${result.detail}` : `via_connect:${reason}`,
+  };
+}
+
+async function processMessageProfile(tabId, windowId, url, settings, job) {
+  const template = (settings.messageTemplate || "Hi, Marcus doing some testing here.").trim();
+  if (!template) {
+    return { outcome: "needs_review", detail: "Empty message template" };
+  }
+
+  broadcast({ phase: "navigating", url, mode: "message" });
+  await navigate(tabId, url);
+  const readMs = settings.fastDogfood
+    ? gaussianDelayMs(2000, 700, 1000, 4500)
+    : gaussianDelayMs(7000, 2500, 3000, 18000);
+  await sleep(readMs);
+
+  const viewport = await getViewport(tabId);
+  let cursor = randomCursorStart(viewport, settings);
+  broadcast({ phase: "cursor_start", cursor, url });
+
+  await scrollChunk(tabId, 180 + Math.random() * 120);
+  await sleep(900 + Math.random() * 900);
+
+  const domState = await detectDomProfileState(tabId);
+  broadcast({
+    phase: "dom_cta",
+    state: domState.state,
+    message_style: domState.message_style,
+    signals: domState.signals,
+    url,
+  });
+  // Pending invite: blue Message may exist, but we must wait — do not message/connect
+  if (domState.state === "pending") {
+    return { outcome: "pending", detail: `dom:${domState.message_style || "filled_blue"}` };
+  }
+  // Not connected: white/outlined Message (+ Connect) → auto run Connect flow (C1/C2/A2/A3)
+  if (
+    domState.state === "can_connect" ||
+    domState.state === "not_connected_message_only" ||
+    (domState.message_style === "outlined_white" &&
+      domState.state !== "can_message" &&
+      domState.state !== "already_connected")
+  ) {
+    return fallbackToConnect(
+      tabId,
+      windowId,
+      url,
+      settings,
+      job,
+      `dom:${domState.state}:${domState.message_style}`
+    );
+  }
+
+  let dataUrl = await captureTab(windowId, tabId);
+  let shotSize = await screenshotSize(dataUrl);
+
+  // Confirm with vision when DOM is ambiguous
+  if (domState.state !== "can_message" && domState.state !== "already_connected") {
+    broadcast({ phase: "triaging_cta", url });
+    const triage = await locate(settings, dataUrl, "profile_cta");
+    broadcast({
+      phase: "triage_result",
+      profile_state: triage.profile_state,
+      message_style: triage.message_style,
+      signals: triage.signals,
+      url,
+    });
+    if ((triage.profile_state || "").toLowerCase() === "pending") {
+      return { outcome: "pending", detail: "vision_triage" };
+    }
+    if (!triageCanMessage(triage)) {
+      return fallbackToConnect(
+        tabId,
+        windowId,
+        url,
+        settings,
+        job,
+        `vision:${triage.profile_state}:${triage.message_style}`
+      );
+    }
+  }
+
+  let msgTarget = await locateDomMessageButton(tabId);
+  if (!msgTarget) {
+    broadcast({ phase: "locate_message", url });
+    const loc = await locate(settings, dataUrl, "message");
+    msgTarget = pickTarget(loc);
+  }
+  if (!msgTarget) {
+    const triage = await locate(settings, dataUrl, "profile_cta");
+    broadcast({
+      phase: "triage_result",
+      profile_state: triage.profile_state,
+      message_style: triage.message_style,
+      signals: triage.signals,
+      url,
+    });
+    const state = (triage.profile_state || "").toLowerCase();
+    if (state === "pending") {
+      return { outcome: "pending", detail: state };
+    }
+    if (!triageCanMessage(triage)) {
+      return fallbackToConnect(tabId, windowId, url, settings, job, state);
+    }
+    msgTarget =
+      (triage.targets || []).find((t) => /message/i.test(t.label || "")) || pickTarget(triage);
+  }
+  if (!msgTarget) {
+    return fallbackToConnect(
+      tabId,
+      windowId,
+      url,
+      settings,
+      job,
+      "filled_blue_message_missing"
+    );
+  }
+
+  broadcast({ phase: "click_message", target: msgTarget, url });
+  cursor = await moveClick(tabId, settings, cursor, msgTarget, viewport, shotSize);
+  await sleep(1200 + Math.random() * 900);
+
+  dataUrl = await captureTab(windowId, tabId);
+  shotSize = await screenshotSize(dataUrl);
+  const afterOpen = await validate(settings, dataUrl, "message_click");
+  broadcast({ phase: "post_message_click", state: afterOpen.state, url });
+  if (afterOpen.state === "captcha" || afterOpen.state === "unusual_activity") {
+    await setCooldown("unusual_activity", 5 * 24 * 3600 * 1000);
+    return { outcome: "error", detail: afterOpen.state };
+  }
+
+  let boxTarget =
+    (afterOpen.targets || []).find((t) => /message_box|write a message|composer/i.test(t.label || "")) ||
+    pickTarget(await locate(settings, dataUrl, "message_box"));
+  if (!boxTarget) {
+    return { outcome: "needs_review", detail: "Composer / message box not found" };
+  }
+
+  broadcast({ phase: "focus_composer", target: boxTarget, url });
+  cursor = await moveClick(tabId, settings, cursor, boxTarget, viewport, shotSize);
+  await sleep(350 + Math.random() * 250);
+
+  broadcast({ phase: "typing_message", chars: template.length, url });
+  const timeline = await keyboardTimeline(settings, template);
+  await playKeyTimeline(tabId, timeline.events);
+  await sleep(700 + Math.random() * 500);
+
+  dataUrl = await captureTab(windowId, tabId);
+  shotSize = await screenshotSize(dataUrl);
+  let sendTarget =
+    (afterOpen.targets || []).find((t) => /^send$/i.test(t.label || "")) ||
+    pickTarget(await locate(settings, dataUrl, "send"));
+  if (!sendTarget) {
+    return { outcome: "needs_review", detail: "Send button not found" };
+  }
+
+  broadcast({ phase: "click_send", target: sendTarget, url });
+  cursor = await moveClick(tabId, settings, cursor, sendTarget, viewport, shotSize);
+  await sleep(1100 + Math.random() * 700);
+
+  const afterSend = await validate(settings, await captureTab(windowId, tabId), "message_send");
+  broadcast({ phase: "post_send", state: afterSend.state, url });
+  if (afterSend.state === "captcha" || afterSend.state === "unusual_activity") {
+    await setCooldown("unusual_activity", 5 * 24 * 3600 * 1000);
+    return { outcome: "error", detail: afterSend.state };
+  }
+  if (afterSend.state === "message_sent" || afterSend.state === "composer_open" || afterSend.state === "unknown") {
+    // unknown after send is common if thread UI is ambiguous — treat typed+clicked as sent for dogfood
+    return {
+      outcome: "message_sent",
+      detail: afterSend.state === "message_sent" ? null : `assumed_sent:${afterSend.state}`,
+    };
+  }
+  return { outcome: "needs_review", detail: `Unexpected after send: ${afterSend.state}` };
+}
+
+export async function startMessageJob(urls) {
+  const settings = await getSettings();
+  const clean = urls.map((u) => u.trim()).filter((u) => u.includes("linkedin.com/"));
+  if (!clean.length) throw new Error("No valid LinkedIn URLs");
+
+  let job = {
+    id: `job_${Date.now()}`,
+    mode: "message",
+    status: "running",
+    urls: clean,
+    cursor: 0,
+    results: {},
+    createdAt: Date.now(),
+    messageTemplate: settings.messageTemplate,
+  };
+
+  const { windowId, tabId } = await ensureWorkerWindow(clean[0]);
+  job.workerWindowId = windowId;
+  job.workerTabId = tabId;
+  await saveJob(job);
+
+  await attachDebugger(tabId);
+  broadcast({ phase: "started", mode: "message", total: clean.length });
+
+  try {
+    for (let i = 0; i < clean.length; i++) {
+      job = await getJob();
+      if (!job || job.status === "paused" || job.status === "aborted") {
+        broadcast({ phase: "paused_or_aborted" });
+        break;
+      }
+
+      const url = clean[i];
+      job.cursor = i;
+      await saveJob(job);
+
+      try {
+        await assertCanMessage(settings);
+      } catch (e) {
+        job.status = "stopped_safety";
+        job.stopReason = e.message;
+        await saveJob(job);
+        broadcast({ phase: "stopped_safety", reason: e.message });
+        break;
+      }
+
+      const win = await chrome.windows.get(windowId);
+      if (win.state === "minimized") {
+        job.status = "paused";
+        job.stopReason = "Worker window minimized";
+        await saveJob(job);
+        broadcast({ phase: "paused", reason: "minimized" });
+        break;
+      }
+
+      let result;
+      try {
+        result = await processMessageProfile(tabId, windowId, url, settings, job);
+      } catch (err) {
+        result = { outcome: "error", detail: String(err?.message || err) };
+      }
+
+      job.results[url] = result.outcome;
+      job.lastDetail = result.detail || null;
+      job.lastPhase = result.outcome;
+      await saveJob(job);
+      const connectOutcomes = ["connect_sent", "email_gate_filled"];
+      await appendSendEvent({
+        id: `${job.id}_${i}`,
+        url,
+        sentAt: Date.now(),
+        kind: connectOutcomes.includes(result.outcome) ? "connect" : "message",
+        outcome: result.outcome,
+        jobId: job.id,
+        detail: result.detail || null,
+      });
+      broadcast({
+        phase: "profile_done",
+        url,
+        outcome: result.outcome,
+        detail: result.detail || null,
+        index: i + 1,
+        total: clean.length,
+      });
+
+      if (
+        result.outcome === "hard_cap" ||
+        result.detail === "unusual_activity" ||
+        result.detail === "captcha" ||
+        String(result.detail || "").endsWith("unusual_activity") ||
+        String(result.detail || "").endsWith("captcha")
+      ) {
+        job.status = "stopped_safety";
+        await saveJob(job);
+        break;
+      }
+
+      if (i < clean.length - 1) {
+        const gap = settings.fastDogfood
+          ? gaussianDelayMs(6_000, 2_000, 3_000, 15_000)
+          : gaussianDelayMs(75_000, 30_000, 40_000, 6 * 60_000);
         broadcast({ phase: "waiting", ms: Math.round(gap) });
         await sleep(gap);
         job = await getJob();

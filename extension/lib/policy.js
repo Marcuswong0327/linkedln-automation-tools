@@ -70,6 +70,18 @@ export async function assertCanConnect(settings) {
   return { daily, rolling };
 }
 
+/** Message mode: honor safety cooldown, but do not use connect invite caps. */
+export async function assertCanMessage(_settings) {
+  const cooldown = await getCooldown();
+  if (cooldown?.until && Date.now() < cooldown.until) {
+    throw Object.assign(new Error(`Cooldown: ${cooldown.reason}`), {
+      code: "cooldown",
+      cooldown,
+    });
+  }
+  return { ok: true };
+}
+
 export async function setCooldown(reason, durationMs) {
   const until = Date.now() + durationMs;
   await chrome.storage.local.set({

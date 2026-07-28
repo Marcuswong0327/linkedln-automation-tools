@@ -1,7 +1,7 @@
 (() => {
   // Keep patterns tight — broad words like "verification" false-trigger on normal LinkedIn UI.
   const RULES = [
-    { reason: "weekly_limit", re: /you've reached the weekly invitation limit|reached the weekly invitation limit/i },
+    { reason: "weekly_limit", re: /you.?ve reached the weekly invitation limit/i },
     {
       reason: "unusual_activity",
       re: /we'?ve restricted your account|unusual activity from your account|are you a robot|start a security verification|solve this puzzle/i,

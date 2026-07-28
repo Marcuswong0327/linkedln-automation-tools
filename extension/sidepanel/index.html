@@ -2,13 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Linktal Connect</title>
+    <title>Linktal Outreach</title>
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
     <header>
-      <h1>Linktal Connect</h1>
-      <p class="sub">V1 Connect-only · Qwen2.5 VL 72B (OpenRouter)</p>
+      <h1>Linktal Outreach</h1>
+      <p class="sub">Connect + Message · Qwen2.5 VL 72B (OpenRouter)</p>
     </header>
 
     <section class="card">
@@ -27,12 +27,22 @@
     </section>
 
     <section class="card">
+      <label>Job mode</label>
+      <select id="jobMode">
+        <option value="connect">Connect</option>
+        <option value="message">Message</option>
+      </select>
+      <label>Message template</label>
+      <textarea id="messageTemplate" rows="4" placeholder="Hi, Marcus doing some testing here."></textarea>
       <label>Profile URLs (one per line)</label>
       <textarea id="urls" rows="8" placeholder="https://www.linkedin.com/in/..."></textarea>
       <div class="row actions">
-        <button id="start">Start Connect</button>
+        <button id="start">Start</button>
         <button id="pause" class="secondary">Pause</button>
         <button id="abort" class="danger">Abort</button>
+      </div>
+      <div class="row" style="margin-top: 8px">
+        <button id="clearCooldown" class="secondary" type="button">Clear cooldown</button>
       </div>
     </section>
 
@@ -45,6 +55,7 @@
 
     <p class="hint">
       Keep the worker window open (not minimized). Yellow debugger banner is expected.
+      Message mode: connected → DM; not connected → auto Connect flow; pending → skip.
     </p>
     <script type="module" src="sidepanel.js"></script>
   </body>

@@ -10,6 +10,9 @@ async function refreshDashboard() {
   $("softCapEmail").value = settings.softCapEmail || "";
   $("pauseAfterEmailGate").checked = !!settings.pauseAfterEmailGate;
   $("fastDogfood").checked = settings.fastDogfood !== false;
+  $("jobMode").value = settings.jobMode === "message" ? "message" : "connect";
+  $("messageTemplate").value =
+    settings.messageTemplate || "Hi, Marcus doing some testing here.";
 
   let healthText = "Brain: unreachable";
   if (health?.ok) {
@@ -31,6 +34,7 @@ async function refreshDashboard() {
     $("status").textContent = JSON.stringify(
       {
         status: job.status,
+        mode: job.mode,
         cursor: job.cursor,
         total: job.urls?.length,
         stopReason: job.stopReason,
@@ -49,14 +53,21 @@ $("saveSettings").addEventListener("click", async () => {
     softCapEmail: $("softCapEmail").value.trim(),
     pauseAfterEmailGate: $("pauseAfterEmailGate").checked,
     fastDogfood: $("fastDogfood").checked,
+    jobMode: $("jobMode").value,
+    messageTemplate: $("messageTemplate").value,
   });
   await refreshDashboard();
 });
 
 $("start").addEventListener("click", async () => {
   const urls = $("urls").value.split(/\r?\n/);
-  $("status").textContent = "Starting…";
-  await chrome.runtime.sendMessage({ type: "start_job", urls });
+  const mode = $("jobMode").value === "message" ? "message" : "connect";
+  await saveSettings({
+    jobMode: mode,
+    messageTemplate: $("messageTemplate").value,
+  });
+  $("status").textContent = `Starting ${mode}…`;
+  await chrome.runtime.sendMessage({ type: "start_job", mode, urls });
   setTimeout(refreshDashboard, 500);
 });
 
@@ -67,6 +78,18 @@ $("pause").addEventListener("click", async () => {
 
 $("abort").addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "abort_job" });
+  await refreshDashboard();
+});
+
+$("clearCooldown").addEventListener("click", async () => {
+  await chrome.storage.local.remove("cooldown");
+  const job = (await chrome.storage.local.get("activeJob")).activeJob;
+  if (job && job.status === "stopped_safety") {
+    job.status = "paused";
+    job.stopReason = null;
+    await chrome.storage.local.set({ activeJob: job });
+  }
+  $("status").textContent = "Cooldown cleared. You can Start again.";
   await refreshDashboard();
 });
 

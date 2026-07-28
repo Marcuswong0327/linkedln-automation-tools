@@ -48,6 +48,15 @@ label {
   color: #44403c;
 }
 
+select {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 8px;
+  font: inherit;
+  color: inherit;
+}
+
 input[type="text"],
 input[type="email"],
 textarea {

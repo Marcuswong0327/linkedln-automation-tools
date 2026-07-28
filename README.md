@@ -23,14 +23,19 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 Check: http://127.0.0.1:8000/v1/health  
 
 
-## Connect flow covered, no message yet
+## Connect + Message flows
 
 | Scenario | Behavior |
 | --- | --- |
 | **C1** Connect visible on bar | Click **Connect** |
 | **C2** Follow / Message / **More (...)** only | Click **More** → click **Connect** in menu|
 | **A2** Note modal | Click **Send without a note** |
-| **A3** Email gate | Type `marcus.wong@linktal.com.au` → submit |
+| **A3** Email gate | Type soft-cap email → submit |
+| **M1** Connected (blue Message) | Click **Message** → type template → **Send** |
+| **Pending** Pending + blue Message | Skip / wait (`pending`) — no action |
+| **Not connected** Connect + white Message | Message mode **auto-falls back** to Connect (C1/C2 → A2/A3) |
+
+CTA fixtures (for vision grounding): `docs/fixtures/cta/`
 
 ## Hosting later (no GPU)
 

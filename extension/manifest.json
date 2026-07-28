@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Linkedln Automation Outreach",
   "version": "1.0.0",
-  "description": "Qwen2.5 VL + Ghost-Cursor Connect & Message automation.",
+  "description": "Qwen2.5 VL + Ghost-Cursor Connect and Message automation.",
   "permissions": [
     "debugger",
     "tabs",

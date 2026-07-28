@@ -31,34 +31,51 @@ TASK_GOALS: dict[str, str] = {
     "send_without_a_note": 'the button labeled "Send without a note" on the invitation modal',
     "email_field": "the email address text input on the connect/email gate modal",
     "email_submit": "the primary submit/Continue/Send/Connect button on the email gate modal",
-    "message": "the Message button on the profile action bar",
-    "message_box": "the message composer text input/textarea",
-    "send": "the Send button in the messaging UI",
+    "message": (
+        "the FILLED PRIMARY Message button on the profile action bar: solid LinkedIn-blue background, "
+        "white paper-plane icon + white text 'Message'. "
+        "Do NOT pick the outlined/white-background Message button (that appears next to Connect for people "
+        "you are NOT connected to). Not Messaging in the top nav, not More (...)."
+    ),
+    "message_box": (
+        "the message composer text input/contenteditable area where you type a LinkedIn DM "
+        "(placeholder like 'Write a message…' inside the messaging overlay/bubble)"
+    ),
+    "send": (
+        "the Send control in the open LinkedIn messaging composer "
+        "(Send button or paper-plane send icon next to the message box). Not Message on the profile bar."
+    ),
     "profile_cta": (
-        "Decide how to start a connection on this LinkedIn profile action bar. "
-        "If a Connect button is visible on the main bar, locate Connect. "
-        "If the bar shows Follow and/or Message and a More (...) button but NO Connect on the bar, "
-        "locate the More (...) button instead (Connect is inside that menu)."
+        "Classify the profile action bar using Message button STYLE and labels (see triage rules). "
+        "Return the correct profile_state and the primary click target for that state."
     ),
 }
 
 TRIAGE_PROMPT = """You are classifying the LinkedIn profile ACTION BAR (buttons under the name/headline).
-Common layouts:
-- C1: Connect is visible directly on the bar (often next to Message / More).
-- C2: Bar shows Follow and/or Message and a More (...) three-dot button; Connect is ONLY inside More — not on the bar.
+
+CRITICAL — Message button visual styles (do not confuse them):
+1) NOT CONNECTED: blue filled **Connect** (person+) AND outlined/WHITE-background **Message** (blue text/border, white fill). Often also More (...). Degree may show 2nd/3rd.
+2) CONNECTED (1st): solid BLUE-background **Message** (white icon + white text) as the primary CTA. Usually NO Connect and NO Pending — often only Message + More (...). Degree shows · 1st.
+3) PENDING invite: solid BLUE-background **Message** PLUS a white/outlined **Pending** button (clock icon + text Pending). Do nothing — wait to be accepted. Degree may still show 2nd.
+
+Also:
+- C2 overflow: Follow and/or Message and More (...), but Connect is ONLY inside More (no Connect on the bar).
 
 Return ONLY valid JSON (no markdown):
 {{
-  "profile_state": "can_connect_direct" | "can_connect_overflow" | "pending" | "already_connected" | "unknown",
-  "targets": [{{"label": "Connect" | "More", "x": <int>, "y": <int>, "confidence": <0-1>}}],
-  "signals": ["short visible button labels you see on the bar"]
+  "profile_state": "can_connect_direct" | "can_connect_overflow" | "can_message" | "pending" | "already_connected" | "unknown",
+  "message_style": "filled_blue" | "outlined_white" | "absent" | "unknown",
+  "targets": [{{"label": "Connect" | "More" | "Message" | "Pending", "x": <int>, "y": <int>, "confidence": <0-1>}}],
+  "signals": ["short visible button labels + color notes, e.g. Connect blue, Message white outline, Pending"]
 }}
 
 Rules:
-- can_connect_direct: Connect is visible on the main bar → targets[0] = Connect button center.
-- can_connect_overflow: Connect is NOT on the bar; More (...) is present → targets[0] = More (...) center.
-- pending: button says Pending / invitation already sent.
-- already_connected: 1st degree / only Message (no Connect path).
+- can_connect_direct: Connect visible on bar (usually with outlined white Message) → targets[0] = Connect center. message_style=outlined_white.
+- can_connect_overflow: no Connect on bar; More present (Connect under More) → targets[0] = More. Message if present is usually outlined_white.
+- can_message / already_connected: CONNECTED — filled BLUE Message, no Connect, no Pending → targets[0] = Message center. message_style=filled_blue.
+- pending: Pending button visible (with or without blue Message) → targets may include Pending; do NOT treat as can_message. message_style often filled_blue for Message.
+- Prefer profile_state "pending" whenever Pending is visible, even if Message is blue.
+- Prefer can_message over already_connected when filled blue Message is the actionable CTA.
 Coordinates are pixel centers in THIS image (origin top-left). Image size is {width}x{height}.
 """
 
@@ -77,9 +94,27 @@ Rules:
 - email_gate: asks for the other person's email to connect
 - weekly_limit: reached weekly invitation limit
 - captcha / unusual_activity: bot checks, captcha, unusual activity
-- pending / already_connected: Connect became Pending, or already connected / Message-only
+- pending: action bar shows Pending (clock) — often with blue Message; invitation waiting
+- already_connected: 1st-degree — filled blue Message, no Connect/Pending
 - invite_sent: invite appears sent with no blocking modal
 - If note_choice, include the "Send without a note" button center in targets (CSS/screenshot pixels).
+Coordinates are pixel centers in THIS image (origin top-left). Image size is {width}x{height}.
+"""
+
+MESSAGE_VALIDATE_PROMPT = """You are classifying a LinkedIn UI screenshot during Message (DM) automation.
+Return ONLY valid JSON (no markdown):
+{{
+  "state": "composer_open" | "message_sent" | "captcha" | "unusual_activity" | "unknown",
+  "signals": ["visible text clues"],
+  "targets": [{{"label": "message_box" | "Send", "x": <int>, "y": <int>, "confidence": <0-1>}}],
+  "raw_summary": "one short sentence"
+}}
+
+Rules:
+- composer_open: messaging overlay/bubble is open with a Write a message / text input visible.
+  Include message_box center in targets when possible; include Send if visible.
+- message_sent: your typed message appears in the thread / composer cleared after send.
+- captcha / unusual_activity: bot checks.
 Coordinates are pixel centers in THIS image (origin top-left). Image size is {width}x{height}.
 """
 
@@ -148,6 +183,7 @@ class OpenRouterVisionEngine:
                     continue
             return {
                 "profile_state": str(data.get("profile_state") or "unknown"),
+                "message_style": str(data.get("message_style") or "unknown"),
                 "targets": targets,
                 "signals": list(data.get("signals") or []),
                 "raw": raw[-400:],
@@ -196,7 +232,12 @@ If the element is missing, status=not_found (still include a best-effort x,y if 
             raise RuntimeError(self.error or "OpenRouter vision not ready")
 
         w, h = image.size
-        prompt = VALIDATE_PROMPT.format(width=w, height=h)
+        base = (
+            MESSAGE_VALIDATE_PROMPT
+            if str(expected_after).startswith("message_")
+            else VALIDATE_PROMPT
+        )
+        prompt = base.format(width=w, height=h)
         prompt += f"\nContext: action just performed was '{expected_after}'."
         raw = self._call_vision(image, prompt)
         data = self._parse_json(raw)

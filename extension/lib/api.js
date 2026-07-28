@@ -1,5 +1,7 @@
 const DEFAULTS = {
   backendUrl: "http://127.0.0.1:8000",
+  /** Legacy Brain secret (old uvicorn still required this). New Brain ignores it. */
+  brainApiKey: "dev-local-key",
   softCapEmail: "marcus.wong@linktal.com.au",
   pauseAfterEmailGate: false,
   dailyCap: 15,
@@ -8,7 +10,16 @@ const DEFAULTS = {
   randomizeCursorStart: true,
   /** When true, use short delays for local dogfood (not production pacing). */
   fastDogfood: true,
+  jobMode: "connect",
+  messageTemplate: "Hi, Marcus doing some testing here.",
 };
+
+function brainHeaders(settings, extra = {}) {
+  const headers = { ...extra };
+  const key = settings?.brainApiKey || DEFAULTS.brainApiKey;
+  if (key) headers["X-API-Key"] = key;
+  return headers;
+}
 
 export async function getSettings() {
   const stored = await chrome.storage.local.get(Object.keys(DEFAULTS));
@@ -28,7 +39,7 @@ export async function apiHealth(settings) {
 async function apiJson(settings, path, body) {
   const res = await fetch(`${settings.backendUrl}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: brainHeaders(settings, { "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -41,6 +52,7 @@ async function apiJson(settings, path, body) {
 async function apiForm(settings, path, form) {
   const res = await fetch(`${settings.backendUrl}${path}`, {
     method: "POST",
+    headers: brainHeaders(settings),
     body: form,
   });
   if (!res.ok) {

@@ -35,12 +35,16 @@ def _delay_for(prev: str, curr: str, rng: random.Random) -> float:
 
 def _key_code(ch: str) -> tuple[str, str, bool]:
     """Return (key, code, needs_shift)."""
+    if ch in ("\n", "\r"):
+        return "Enter", "Enter", False
     if ch == " ":
         return " ", "Space", False
     if ch == "@":
         return "@", "Digit2", True
     if ch == ".":
         return ".", "Period", False
+    if ch == ",":
+        return ",", "Comma", False
     if ch == "-":
         return "-", "Minus", False
     if ch == "_":
@@ -60,16 +64,37 @@ def generate_keystroke_timeline(text: str, locale: str = "en") -> dict[str, Any]
     prev = ""
     first = True
     for ch in text:
-        delay = 0.0 if first else _delay_for(prev, ch, rng)
+        if ch == "\r":
+            continue
+        delay = 0.0 if first else _delay_for(prev, ch if ch != "\n" else ".", rng)
+        if ch == "\n":
+            delay += rng.uniform(180.0, 420.0)
         first = False
         key, code, shift = _key_code(ch)
+        text_payload = "\n" if ch == "\n" else ch
         if shift:
             events.append({"op": "keyDown", "key": "Shift", "code": "ShiftLeft", "delay_ms": round(delay, 1)})
-            events.append({"op": "keyDown", "key": key, "code": code, "text": ch, "delay_ms": round(rng.uniform(20, 45), 1)})
+            events.append(
+                {
+                    "op": "keyDown",
+                    "key": key,
+                    "code": code,
+                    "text": text_payload,
+                    "delay_ms": round(rng.uniform(20, 45), 1),
+                }
+            )
             events.append({"op": "keyUp", "key": key, "code": code, "delay_ms": round(rng.uniform(30, 70), 1)})
             events.append({"op": "keyUp", "key": "Shift", "code": "ShiftLeft", "delay_ms": round(rng.uniform(15, 40), 1)})
         else:
-            events.append({"op": "keyDown", "key": key, "code": code, "text": ch, "delay_ms": round(delay, 1)})
+            events.append(
+                {
+                    "op": "keyDown",
+                    "key": key,
+                    "code": code,
+                    "text": text_payload,
+                    "delay_ms": round(delay, 1),
+                }
+            )
             events.append({"op": "keyUp", "key": key, "code": code, "delay_ms": round(rng.uniform(30, 70), 1)})
         prev = ch
     return {"events": events}
