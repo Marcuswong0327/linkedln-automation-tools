@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Linktal Connect</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Linktal Connect</h1>
+      <p class="sub">V1 Connect-only · Qwen2.5 VL 72B (OpenRouter)</p>
+    </header>
+
+    <section class="card">
+      <label>Backend URL</label>
+      <input id="backendUrl" type="text" />
+      <label>API Key</label>
+      <input id="apiKey" type="text" />
+      <label>Soft-cap email</label>
+      <input id="softCapEmail" type="email" />
+      <div class="row">
+        <label><input id="pauseAfterEmailGate" type="checkbox" /> Pause 48h after email gate</label>
+      </div>
+      <div class="row">
+        <label><input id="fastDogfood" type="checkbox" /> Fast dogfood delays (short waits)</label>
+      </div>
+      <button id="saveSettings" class="secondary">Save settings</button>
+      <p id="health" class="meta"></p>
+    </section>
+
+    <section class="card">
+      <label>Profile URLs (one per line)</label>
+      <textarea id="urls" rows="8" placeholder="https://www.linkedin.com/in/..."></textarea>
+      <div class="row actions">
+        <button id="start">Start Connect</button>
+        <button id="pause" class="secondary">Pause</button>
+        <button id="abort" class="danger">Abort</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Quota</h2>
+      <p id="quota" class="meta">—</p>
+      <h2>Status</h2>
+      <pre id="status">Idle</pre>
+    </section>
+
+    <p class="hint">
+      Keep the worker window open (not minimized). Yellow debugger banner is expected.
+    </p>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

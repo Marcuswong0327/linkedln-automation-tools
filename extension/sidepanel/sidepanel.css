@@ -1,0 +1,114 @@
+:root {
+  --bg: #f3f1ec;
+  --ink: #1c1917;
+  --accent: #0a66c2;
+  --danger: #b91c1c;
+  --line: #d6d3d1;
+  --card: #fffcf7;
+  font-family: "Segoe UI", "IBM Plex Sans", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 12px;
+  background: linear-gradient(160deg, #e8eef5 0%, var(--bg) 45%, #efe6d8 100%);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.sub {
+  margin: 2px 0 12px;
+  color: #57534e;
+  font-size: 0.85rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 8px 0 4px;
+  color: #44403c;
+}
+
+input[type="text"],
+input[type="email"],
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 8px;
+  font: inherit;
+  color: inherit;
+}
+
+textarea {
+  resize: vertical;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.actions button {
+  flex: 1;
+}
+
+button {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  padding: 8px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #44403c;
+}
+
+button.danger {
+  background: var(--danger);
+}
+
+.meta,
+.hint {
+  font-size: 0.8rem;
+  color: #57534e;
+}
+
+pre#status {
+  white-space: pre-wrap;
+  background: #1c1917;
+  color: #f5f5f4;
+  padding: 8px;
+  font-size: 0.75rem;
+  min-height: 80px;
+}
+
+h2 {
+  margin: 0 0 4px;
+  font-size: 0.9rem;
+}

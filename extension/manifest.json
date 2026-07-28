@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Linkedln Automation Outreach",
+  "version": "1.0.0",
+  "description": "Qwen2.5 VL + Ghost-Cursor Connect & Message automation.",
+  "permissions": [
+    "debugger",
+    "tabs",
+    "windows",
+    "storage",
+    "sidePanel",
+    "alarms",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://www.linkedin.com/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background/service_worker.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/*"],
+      "js": ["content/watchdog.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
