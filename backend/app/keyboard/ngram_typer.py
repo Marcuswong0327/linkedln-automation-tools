@@ -22,6 +22,7 @@ _TABLE = _load_table()
 
 
 def _delay_for(prev: str, curr: str, rng: random.Random) -> float:
+    # randomness delay between keystrokes, jitters, capital letter, punctuation 
     key = f"{prev.lower()}{curr.lower()}"
     mean = _TABLE.get(key, _FALLBACK_BASE)
     jitter = rng.uniform(-0.15, 0.15)
