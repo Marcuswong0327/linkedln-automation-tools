@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from PIL import Image
 from pydantic import BaseModel, Field
 
@@ -13,14 +13,6 @@ from app.mouse.ghost_cursor import path_response
 from app.vision.openrouter_vision import get_engine
 
 router = APIRouter(prefix="/v1")
-
-
-def require_api_key(
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
-    settings: Settings = Depends(get_settings),
-) -> None:
-    if x_api_key != settings.api_key:
-        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key")
 
 
 class Point(BaseModel):
@@ -61,7 +53,7 @@ def health(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     }
 
 
-@router.post("/mouse/path", dependencies=[Depends(require_api_key)])
+@router.post("/mouse/path")
 def mouse_path(body: MousePathRequest) -> dict[str, Any]:
     return path_response(
         start=body.start.model_dump(),
@@ -71,7 +63,7 @@ def mouse_path(body: MousePathRequest) -> dict[str, Any]:
     )
 
 
-@router.post("/keyboard/timeline", dependencies=[Depends(require_api_key)])
+@router.post("/keyboard/timeline")
 def keyboard_timeline(body: KeyboardRequest) -> dict[str, Any]:
     return generate_keystroke_timeline(body.text, body.locale)
 
@@ -83,7 +75,7 @@ async def _read_image(file: UploadFile) -> Image.Image:
     return Image.open(io.BytesIO(data)).convert("RGB")
 
 
-@router.post("/vision/locate", dependencies=[Depends(require_api_key)])
+@router.post("/vision/locate")
 async def vision_locate(
     task: str = Form(...),
     image: UploadFile = File(...),
@@ -95,7 +87,7 @@ async def vision_locate(
         raise HTTPException(status_code=503, detail=f"OpenRouter locate failed: {exc}") from exc
 
 
-@router.post("/vision/validate", dependencies=[Depends(require_api_key)])
+@router.post("/vision/validate")
 async def vision_validate(
     expected_after: str = Form(...),
     image: UploadFile = File(...),

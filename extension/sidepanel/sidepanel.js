@@ -7,7 +7,6 @@ async function refreshDashboard() {
   if (!dash) return;
   const { settings, job, daily, rolling, cooldown, health } = dash;
   $("backendUrl").value = settings.backendUrl || "";
-  $("apiKey").value = settings.apiKey || "";
   $("softCapEmail").value = settings.softCapEmail || "";
   $("pauseAfterEmailGate").checked = !!settings.pauseAfterEmailGate;
   $("fastDogfood").checked = settings.fastDogfood !== false;
@@ -47,7 +46,6 @@ async function refreshDashboard() {
 $("saveSettings").addEventListener("click", async () => {
   await saveSettings({
     backendUrl: $("backendUrl").value.trim(),
-    apiKey: $("apiKey").value.trim(),
     softCapEmail: $("softCapEmail").value.trim(),
     pauseAfterEmailGate: $("pauseAfterEmailGate").checked,
     fastDogfood: $("fastDogfood").checked,

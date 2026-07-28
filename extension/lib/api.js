@@ -1,6 +1,5 @@
 const DEFAULTS = {
   backendUrl: "http://127.0.0.1:8000",
-  apiKey: "dev-local-key",
   softCapEmail: "marcus.wong@linktal.com.au",
   pauseAfterEmailGate: false,
   dailyCap: 15,
@@ -29,10 +28,7 @@ export async function apiHealth(settings) {
 async function apiJson(settings, path, body) {
   const res = await fetch(`${settings.backendUrl}${path}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": settings.apiKey,
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -45,7 +41,6 @@ async function apiJson(settings, path, body) {
 async function apiForm(settings, path, form) {
   const res = await fetch(`${settings.backendUrl}${path}`, {
     method: "POST",
-    headers: { "X-API-Key": settings.apiKey },
     body: form,
   });
   if (!res.ok) {
